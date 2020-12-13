@@ -119,7 +119,7 @@ regards to their serializability.
 \subsection{Read uncommitted}
 We define read uncommitted to be the isolation level that prohibits the phenomenon
 P0, dirty write, this can be accomplished by placing long-duration write locks when modifying a data item.
-Thus only allowing one transaction at a time to modify a given value.
+This only allows one transaction at a time to write to a given value and requires all others to wait for a commit or abort.
 
 \subsection{Read committed}
 Read committed is defined as the isolation level where P1, dirty read, is prohibited.
@@ -188,37 +188,62 @@ To take a closer look at the difference to repeatable read it is usefull to defi
 
 \includegraphics[width=8cm]{P5}
 \begin{example}
-    (first commit wins): \\
-    Alice reads x and y to be 50€. Bob then reads the same data, while getting his own snapshot
-    to operate on (newer timestamp than Alice). Alice then sets y to be -40€ and commits,
-    resulting in a sum of 10€. Bob then sets y to be 30€ and tries to commit. As Alice already
-    modified x Bob’s transaction will abort.
+    (first commit wins):
+    Constrain: $ X+Y \geq  50$
+    Alice reads x to be 10€ and y to be 50€. Bob then reads the same data, while getting his own snapshot
+    to operate on (newer timestamp than Alice). Alice then sets x to be 5€,
+    resulting in a sum of 55€. Bob then sets y to be 40€. Allice commits and Bob then tries to commit.
 \end{example}
+This would be prohibited by repeatable read but is allowed in snapshot isolation.
+\subsection{Implications}
+When looking at the phenomena defined above one can se that prohibiting it with a locked based system
+would be the same as prohibiting P3 as a lost update can onl be prohibited by placing long locks.
+But when using a multi version system instead proscribing P5B isn't equal to proscribing P3.
 
+The example in 5.1 is allowed by Snapshot isolation as it does not check for constrains and the transaction
+doesn't modify the same item (x and y respectively). Repeatable read on the other hand would disallow such
+behaviour as it places long read and write locks on the items.
+P5B is thus usefull to differntiate between Snapshot isolation and repeatable read.
 \subsection{Comparison with repeatable read}
-In comparison to snapshot isolation repeatable read prohibits P5B while snapshot isolation prohibits some cases of
-P3.
+As staded above repeatable read prohibits P5B while snapshot isolation prohibits some cases of
+P3 and both prohibit P0, P1, and P2. Although the argument above is made with a locking implementation
+it is general as the phenomena defined were strengthened to match the locking behaviour.
 \subsection{Strength}
 Snapshot isolation is comparable in strength to repeatable read as both prohibit P0, P1, and P2.
-\subsection{Comparison to ANSI}
-When looking at the weak interpretation of the ANSI specification as in \cite{Adya_Liskov_O_Neil_2000}
-one can see that Snapshot isolation prohibits all three anomlies A1, A2, and A3 making it ANOMALY SERIALIZABLE.
-To show this we will now take a look at A3 as we have already shown above that Snapshot isolation prohibits P1 and P2.
+To further investigate their difference we have to take a look at the original ANSI specification of serializable,
+as it prohibits A3, which will be defined in the following section.
 \subsection{A3 - Anomaly Phantom}
 This is the strict interpretation of the Phatom anomaly. The difference to P3 is the position of the
-transactions comit is not indiferent.
+transactions commit is not indiferent for A3.
 \begin{example}
     Alice reads the predicate blue cars. Bob then adds a new blue car to the database and increases
     the count of blue cars. Bob commits.  Alice then reads the count of blue cars. This leads to a phantom item
     (Alice can’t see Bob's car but knows of its existence due to the increased count).
 \end{example}
-Thus A3 only opperates on commited data while P3 accounts for transactions to still be in prosses.
+Thus A3 only opperates on commited data while P3 accounts for transactions to still be in prosses,
+making A3 a weaker phenomenon than P3.
+\subsection{Comparison to ANSI}
+When looking at the weak interpretation of the ANSI specification as in \cite{Adya_Liskov_O_Neil_2000}
+one can see that Snapshot isolation prohibits all three anomlies A1, A2, and A3 making it ANOMALY SERIALIZABLE.
+To show this we will now take a look at A3 as we have already shown above that Snapshot isolation prohibits P1 and P2.
+As the definition of A3 states the importance of commit sequence it is easy to see that Snapshot isolation with a first commit winns
+stategy precluders A3, as a already altered item will lead to an abort.
+When looking at a first write wins the same is true as still only one modified value will
+be written to the database and the other one will be discarded by an abort. It thus only changes
+which transaction winns in comparison to first commit wins.
+\subsection{Comparison to Serializable}
+In comparison to the serializable isolation level defined in 3.4 we can say that Snapshot isiolation is
+weaker as serializable precluders P5B as well as P3, which as shown in example 5.1 above doesn"t hold true
+for Snapshot isiolation.
 \section{Conclusion}
 \includegraphics[width=8cm, height=8cm]{iso_lvl_dia.png}
 
-In conclusion one can see that the ANSI specification is inherintly flawed whwn talking
+In conclusion one can see that the ANSI specification is inherintly flawed when talking
 about multi-version histories and non locking database systems, as it failed to consider
-these systems when defining the phenomena.
+these systems when defining the phenomena. As this will inevitably lead to different interpretations
+and implementations it might be advisable to update the ANSI standard
+according to the definitions given in \cite{Adya_Liskov_O_Neil_2000} and \cite{Berenson_Bernstein_Gray_Melton_O_Neil_O_Neil_1995}
+to ensure the correct behaviour of non locking implementations of ANSI SQL.
 \bibliographystyle{plainnat}
 \bibliography{refs}
 
