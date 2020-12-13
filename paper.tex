@@ -1,7 +1,11 @@
 \documentclass[sigconf, review=true]{acmart}
 \usepackage[english]{babel}
+\usepackage{graphicx}
+\graphicspath{ {./images/} }
 \author{Jeroen-Niclas Trzaska}
 \title{DB pro sem - isolation levels}
+\acmDOI{}
+\acmISBN{}
 \affiliation{%
    \institution{TU Dresden}
    \city{Dresden}
@@ -16,27 +20,44 @@
 
     This paper is going to look at the strengthend ANSI definition poropositions by \cite{Adya_Liskov_O_Neil_2000} as well as the coresponding isolation levels,
     comparing them in terms of strength. We will also take a quick look at non lock based implementations
-    and the problems the ANSI standart has in regards to such implementations as shown in \cite{Berenson_Bernstein_Gray_Melton_O_Neil_O_Neil_1995}.
+    and the problems the ANSI standard has in regards to such implementations as shown in \cite{Berenson_Bernstein_Gray_Melton_O_Neil_O_Neil_1995}.
 \end{abstract}
 \maketitle
+
+\section{Motivation}
+The motivation behind these analyses of the ANSI standard is to better define and examine the
+behaviour of different database implementation aproaches when presented with multi-item dependencies.
+This is important as the ANSI standard was created when locking implementations where the norm and thus multi version systems weren't
+taken into account creating it leading to a behaviour not in line with ANSI.
+These issues include but aren't limited to dependency constrains between two items.
+
+Let's say that Alice has two acoounts at a bank. She has 20€ on each of them now she whithdraws 30€ from acount A and another 20€ form account B.
+The looking at each of the transactions we can see that the constrain $A+B \geq 0$ is met.
+But when executed simultaniously the resulting sum can still be negative. To do so
+she asked Bob to help her.
+\begin{example}
+    Alice reads 20€ to be in both accounts and Bob does the same. Alice then withdraws 30€ from account A and writes -10€ into it and commits, the constrain is still met.
+    Bob then withdraws 20€ from account and, as his transaction read both acounts to have 20€, he writes 0€  to B. This now violates the constrain $A+B \geq 0$.
+\end{example}
 \section{Phemomena Definitions}
 We're now going to introduce the strengthened ANSI phenomena definitions as described in \cite{Adya_Liskov_O_Neil_2000}  which
 are based on the broad interpretation of the ANSI standard. These definitions are inherinty stronger then their ANSI counter part,
-as they rule out other Phenomena not define in the following paragraph.\\
-One might assume that ANSI had these strengthened definitions in mind when specifing them as lock based implementations
-are by far the most common systems.
-
+as they rule out other Phenomena not defined in the following paragraph. This is due to the fact that, as mentioned above, the ANSI standard
+was created with locking implementations in mind. Leading to definitions that would allow phenomena to apear in the database history when using non lock based systems
+while lock based systems using the same interpretation wouldn't.
 
 \subsection{P0 - Dirty write}
 An example for the above mentioned problem with ANSI strength is that while a locking implementation of read uncommitted
 prevents the following phenomenon, a non locking system would not do so.
-So lets start by defining the first phenomena, describing two consecutive writes by two differnt
-transactions leading to an unclear value for x when the first transaction aborts.
+So lets start by defining the first phenomena, which describes two consecutive writes by two differnt
+transactions leading to an unclear value for X when the first transaction aborts.
+
+\includegraphics[width=8cm]{P0}
 
 \begin{example}
     Alice deposits 10€ into a bank account X.
     Bob than deposits a further 20€ into the same account.
-    To do so he reads the value of X and then adds 20 and writes it back to the account.
+    To do so he reads the value of X and then adds 20€ and writes it back to the account X.
     Allice than redacts her transaction.
     Thus the amount of monney in account X is unclear.
 \end{example}
@@ -44,32 +65,47 @@ transactions leading to an unclear value for x when the first transaction aborts
 \subsection{P1 - Dirty read}
 For the second phenomenon we're going to look at reading incosistent data.
 This can be a problem when retrieving information while another transaction
-that writes data is being executed.
+that writes data is being executed. An issue that can arive due to this phenomena is
+that the given transaction reading the inconsistent data might continue to work with this
+incorrect data and writing wrong data back to the database, corrupting it in the process.
+
+\includegraphics[width=8cm]{P1}
 \begin{example}
     Alice transfers 40€ form account x to account y.
-    To do so she reads the value of x subtracts the 40€.
+    To do so she reads the value of x subtracts the 40€ writing 10€ to value x.
     Afterwards, Bob reads the value of x (10€) and y(15€) resulting in a sum of 25€
-    Alice then reads the value of y (15€) and then adds the 40€ to it resulting in a 55€ sum.
+    Alice then reads the value of y (15€) and then adds the 40€ to it resulting in a 55€ sum for y
+    and a total of 65€.
 \end{example}
 
 \subsection{P2 - Fuzzy read}
 The next phenomenon is similar to P1 as it to has to do with read inconsitencies.
 Though this time performing the two reads of the reading transaction without interuption would lead
-to the correct data, so the read is non repeatable.
+to the correct data, so the read is non repeatable. This is an issue as the transaction doesn't know that
+it was interupted and assumes that the data in the database hasn't changed. Thus it opperates under a false pretense
+and might corrupt the database when writing data back to it.
+
+\includegraphics[width=8cm]{P2}
 \begin{example}
     Bob starts to read the sum by reading x and gets interrupted by Alice who then transfers 40€ from x to y after this is completed Bob reads the value of y.
-    Thus the sum is 100 for Alice and 140 for Bob
+    Thus the sum is 100€ for Alice and 140€ for Bob.
     In contrast to P1 a second read of x by Bob would have returned the correct sum.
 \end{example}
 \subsection{P3 - Phantom}
 Once again when looking at the ANSI specification one can see that it only disallowes inserts on the serializable
-isolation level while the following definition of P3 prohibits deletions, inserts, and updates.
+isolation level while the following definition of P3 prohibits deletions, inserts, and updates, making it stronger than A3.
 This phonomenon is only applicable to transactions using predicates and aplies to deletions, insets, and upadates.
+
+
+\includegraphics[width=8cm]{P3}
 \begin{example}
     Alice reads the predicate blue cars. Bob then adds a new blue car to the database and increases
     the count of blue cars. Alice then reads the count of blue cars. This leads to a phantom item
-    ( Alice can’t see Bob's car but knows of its existence due to the count).
+    (Alice can’t see Bob's car but knows of its existence due to the increased count).
 \end{example}
+Not prohibiting this phenomenon can cause inconsistent predicate reads and in the worst case phantom entries in the
+database as the reading transaction could, after reading a phantom object, either assume that it doesn't exist or treat it like an actual
+object, but both would lead to undefined behaviour of the transaction.
 
 \section{ANSI isolation levels}
 We define the isolation levels by the phenomena prohibited by it and we define
@@ -77,6 +113,8 @@ Degree 0 isolation to be the isolation level that doesn’t prohibit any abnorma
 behaviour. Furthermore, we define short duration locks as locks that are held
 while a transaction reads or writes an item, in contrast to long-duration locks which are
 held until a transaction commits or aborts.
+These definition can then be used to clasify different database system implementations in
+regards to their serializability.
 
 \subsection{Read uncommitted}
 We define read uncommitted to be the isolation level that prohibits the phenomenon
@@ -86,7 +124,8 @@ Thus only allowing one transaction at a time to modify a given value.
 \subsection{Read committed}
 Read committed is defined as the isolation level where P1, dirty read, is prohibited.
 To accomplish this the use of short duration read locks, as well as long write locks, is
-necessary. Thus disallowing a write on data that was just read by another transaction.
+necessary. Thus disallowing a write on data that was just read by another transaction as
+well as disallowing overwriting of an item already written by another, not finished, transaction.
 
 \subsection{Repeatable read}
 For Repeatable read, the phenomenon P2, fuzzy read, has to be prohibited.
@@ -100,57 +139,54 @@ transaction finishes either with a commit or abort.
 
 \subsection{Serializable}
 For serializability P3 needs to be prohibited, which can be done by placing long locks
-on reads and writes.
-
-\section{Motivation}
-The motivation behind these theoretical analyses is to better understand the
-behaviour of different systems when presented with multi-item dependencies.
-Such dependencies include but aren't limited to constrains between two items.
-
-Let's say that Alice has two acoounts at a bank. She has 20€ on each of them now she whithdraws 30€ from acount A and another 20€ form account B.
-The looking at each of the transactions we can see that the constrain $A+B \geq 0$ is met.
-But when executed simultaniously the resulting sum can still be negative.
-\begin{example}
-    Alice reads 20€ to be in both accounts and Bob does the same. Alice then withdraws 30€ from account A and writes -10€ into it and commits, the constrain is still met.
-    Bob then withdraws 20€ from account and , as his transaction read both acounts to have 20€, he writes 0€  to B. This now violates the constrain $A+B \geq 0$.
-\end{example}
+on reads and writes. This isolation level is stronger then it's ANSI counter part due to the
+prohibition of prdicate updates and deletions as defined in P3, making it the only isolation level
+outside of the original ANSI ioslation level specifications.
 
 \section{Cursor stability}
-For the cursor stability, it is useful to define a fourth phenomenon P4 (lost update).
-\subsection{ P4  - lost update}
-This phenomenon describes the loss of an update by a transaction due to it being imeadiatly overwritten
+For the cursor stability, it is useful to define a fourth phenomenon P4 (lost update), as this isolation level
+was designed to solve the problem of lost updates.
+\subsection{ P4 - lost update}
+This phenomenon describes the loss of an update by a transaction due to it imeadiatly being overwritten
 by a second transaction.
+\includegraphics[width=8cm]{P4}
 \begin{example}
-    Alice reads x to be 100€. Bob then reads the same, adds 20€ and writes 120 to x and commits.
+    Alice reads x to be 100€. Bob then reads the same, adds 20€ and writes 120€ to x and commits.
     Alice then subtracts 40€ from x and writes 60€ to x and commits. Resulting in the loss of Bob's update.
+    \subsection{Implications}
+    The phenomena define above can be prohibited when a read lock is placed on x (position of the cursor) when
+    read and placing a long write lock on the items row when modified.
+    The read lock is removed when the cursor moves (e.g. reading a new cell),
+    while the write lock only gets removed after the transaction commits or aborts.
+    As Cursor stability is stronger then read commited while being weaker then repeatable read it
+    is used instead of the weaker repeatable read by some database systems. This behaviour is allowed by the ANSI standard
+    as it defines a minimum set of guarantees.
 \end{example}
-\subsection{Implications}
-The phenomena define above can be prohibited when a read lock is placed on x (position of the cursor) when
-read and placing a long write lock on the items row when modified.
-The read lock is removed when the cursor moves (e.g. reading a new cell),
-while the write lock only gets removed after the transaction commits or aborts.
-As Cursor stability is stronger then read commited while being weaker then repeatable read it
-is used instead of the weaker repeatable read by some database systems. This behaviour is allowed by the ansi standard
-as it reqiures a minimum set of guarantees.
+\subsection{Stength}
+When looking at our isiolation levels defined in section 2, we can see that P4 is prohibited by repeatable read,
+as long duration locks on read and write will also disallow the overwriting of an item by another transaction.
+It is thus weaker than repeatable read as prohibiting P4 doesn't prohibit P3.
+Looking at read commited one can reason that one transaction A can read X, then be interupted by transaction B which updates
+item X and commits, and transaction A then continues to write to X.
+Thus makin Cursor stability stronger than the strngthened read commited.
 \subsection{Multi cursor}
-The system described above could also be extended with the use of multiple cursors thus
-parleying the effect of repeatable read isolation as long as the transactions dont acces more items
-then the system has cursors. But obiously this isn't a general, or even practical solution to the phenomenon P2.
-
-
+While the Cursor stability based system described above could also be extended with the use of multiple cursors, thus
+parleying the effect of repeatable read isolation as long as each transaction doesn't acces more items
+then the system has cursors. But obiously this isn't a general, or even practical solution to the phenomenon P2 and
+although it might have real life usecases it won't be discussed further in this paper.
 \section{Snapshot Isolation}
-All of the above-mentioned systems suggest lock-based implementations. We will now look at
-snapshot isolation which in contrast uses multi-versioning.
+All of the above-mentioned systems suggest lock-based implementations, in contrast we will now look at
+snapshot isolation which uses multi-versioning.
 In snapshot isolation, each transaction gets its own snapshot of committed data at the start.
 Thus reads are never blocked, while writes are performed on the given snapshot as to not disturb
 other transactions and allow reads of the updated data only by the same transaction (unless committed).
 For the committing procedure, a second (commit) timestamp is assigned, said timestamp is larger than every
-other assigned time stamp in the system. If another transaction A already modified data the commit of
-\subsection{Strength}
-Snapshot isolation is comparable in strength to repeatable read as both prohibit P0, P1, and P2.
-transaction B fails, leading to an abort if said data was modified by transaction B.
+other assigned time stamp in the system. If another transaction A already modified data of the commiting
+transaction B it's commit fails, leading to an abort.
 \subsection{P5B - Write skew}
 To take a closer look at the difference to repeatable read it is usefull to define a new phenomenon.
+
+\includegraphics[width=8cm]{P5}
 \begin{example}
     (first commit wins): \\
     Alice reads x and y to be 50€. Bob then reads the same data, while getting his own snapshot
@@ -158,7 +194,12 @@ To take a closer look at the difference to repeatable read it is usefull to defi
     resulting in a sum of 10€. Bob then sets y to be 30€ and tries to commit. As Alice already
     modified x Bob’s transaction will abort.
 \end{example}
+
 \subsection{Comparison with repeatable read}
+In comparison to snapshot isolation repeatable read prohibits P5B while snapshot isolation prohibits some cases of
+P3.
+\subsection{Strength}
+Snapshot isolation is comparable in strength to repeatable read as both prohibit P0, P1, and P2.
 \subsection{Comparison to ANSI}
 When looking at the weak interpretation of the ANSI specification as in \cite{Adya_Liskov_O_Neil_2000}
 one can see that Snapshot isolation prohibits all three anomlies A1, A2, and A3 making it ANOMALY SERIALIZABLE.
@@ -169,10 +210,15 @@ transactions comit is not indiferent.
 \begin{example}
     Alice reads the predicate blue cars. Bob then adds a new blue car to the database and increases
     the count of blue cars. Bob commits.  Alice then reads the count of blue cars. This leads to a phantom item
-    ( Alice can’t see Bob's car but knows of its existence due to the count).
+    (Alice can’t see Bob's car but knows of its existence due to the increased count).
 \end{example}
-Thus A3 only opperates on commited data while P3 allows for transactions to still be in prosses.
+Thus A3 only opperates on commited data while P3 accounts for transactions to still be in prosses.
 \section{Conclusion}
+\includegraphics[width=8cm, height=8cm]{iso_lvl_dia.png}
+
+In conclusion one can see that the ANSI specification is inherintly flawed whwn talking
+about multi-version histories and non locking database systems, as it failed to consider
+these systems when defining the phenomena.
 \bibliographystyle{plainnat}
 \bibliography{refs}
 
